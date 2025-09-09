@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Shoe Catalog</title>
+<script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50">
+
+<header class="p-6 text-center">
+  <h1 class="text-3xl font-bold">My Shoe Catalog</h1>
+  <p class="text-gray-600">Automatically updated from Google Sheets</p>
+  <div class="mt-4 flex flex-col sm:flex-row justify-center gap-4">
+    <input id="search" type="text" placeholder="Search by model or brand" class="border rounded-xl px-4 py-2 w-full sm:w-64">
+    <select id="brandFilter" class="border rounded-xl px-4 py-2 w-full sm:w-48">
+      <option value="">All Brands</option>
+    </select>
+    <select id="sortPrice" class="border rounded-xl px-4 py-2 w-full sm:w-48">
+      <option value="asc">Price: Low → High</option>
+      <option value="desc">Price: High → Low</option>
+    </select>
+  </div>
+</header>
+
+<main class="max-w-6xl mx-auto px-4 py-6">
+  <div id="grid" class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3"></div>
+  <p id="status" class="text-xs text-gray-500 mt-8"></p>
+</main>
+
+<script>
+// Paste your published CSV URL here:
+const CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRqmLvcLoBclhwvqcOgxG4ZBDNWRDxbavVaJ4cIkuL8JYG0u-GXm9Csnysc8E6rR1LckcCP0TKppJkx/pub?gid=1098600046&single=true&output=csv";
+
+// Parse CSV into JS array
+function parseCSV(text) {
+  const lines = text.trim().split(/\r?\n/);
+  return lines.map(line => line.split(',').map(cell => cell.replace(/^"|"$/g,'')));
+}
+
+// Format price nicely
+function formatPrice(val) {
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
+}
+
+let data = [];
+const dom = {
+  grid: document.getElementById('grid'),
+  search: document.getElementById('search'),
+  brandFilter: document.getElementById('brandFilter'),
+  sortPrice: document.getElementById('sortPrice'),
+  status: document.getElementById('status')
+};
+
+async function loadCatalog() {
+  const res = await fetch(CSV_URL);
+  const csvText = await res.text();
+  const rows = parseCSV(csvText);
+  const headers = rows[0];
+  data = rows.slice(1).map(r => Object.fromEntries(r.map((v,i)=>[headers[i],v])));
+
+  // convert price and availability types
+  data = data.map(d => ({
+    ...d,
+    Price: parseFloat(d.Price),
+    Availability: d.Availability.toLowerCase() === 'true'
+  }));
+
+  // populate brand filter options
+  const brands = [...new Set(data.map(d => d.Brand))].sort();
+  brands.forEach(b => {
+    const opt = document.createElement('option');
+    opt.value = b;
+    opt.textContent = b;
+    dom.brandFilter.appendChild(opt);
+  });
+
+  render();
+  dom.status.textContent = `Last updated: ${new Date().toLocaleString()}`;
+}
+
+function render() {
+  const searchText = dom.search.value.toLowerCase();
+  const selectedBrand = dom.brandFilter.value;
+  const sortOrder = dom.sortPrice.value;
+
+  let filtered = data.filter(d => 
+    d.Availability &&
+    (d.Model.toLowerCase().includes(searchText) || d.Brand.toLowerCase().includes(searchText)) &&
+    (!selectedBrand || d.Brand === selectedBrand)
+  );
+
+  // sort
+  filtered.sort((a,b) => sortOrder === 'asc' ? a.Price-b.Price : b.Price-a.Price);
+
+  // render grid
+  dom.grid.innerHTML = filtered.map(d => `
+    <div class="bg-white rounded-xl shadow p-4 flex flex-col">
+      <img src="${d.Image_URL}" alt="${d.Model}" class="w-full h-48 object-cover rounded-xl">
+      <h3 class="mt-2 font-semibold">${d.Brand} ${d.Model}</h3>
+      <p class="text-lg font-bold mt-1">${formatPrice(d.Price)}</p>
+      <span class="mt-1 ${d.Availability ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'} px-2 py-0.5 rounded-full text-xs">
+        ${d.Availability ? 'In Stock' : 'Sold Out'}
+      </span>
+      <a href="${d.URL}" target="_blank" class="mt-3 inline-block bg-black text-white px-4 py-2 rounded-xl text-sm text-center">Buy Now</a>
+    </div>
+  `).join('') || `<p class="text-gray-500">No products match your search.</p>`;
+}
+
+// Event listeners
+['input','change'].forEach(ev => {
+  dom.search.addEventListener(ev, render);
+  dom.brandFilter.addEventListener(ev, render);
+  dom.sortPrice.addEventListener(ev, render);
+});
+
+loadCatalog();
+</script>
+</body>
+</html>
