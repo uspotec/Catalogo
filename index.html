@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>My Shoe Catalog</title>
+  <style>
+    body { font-family: Arial, sans-serif; background: #f5f6f7; margin: 0; padding: 20px; }
+    h1 { text-align: center; }
+    .filters { display: flex; justify-content: center; gap: 10px; margin-bottom: 20px; }
+    .catalog { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 20px; }
+    .card { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+    .card img { width: 100%; height: 200px; object-fit: contain; }
+    .price { font-weight: bold; color: green; }
+  </style>
+</head>
+<body>
+  <h1>My Shoe Catalog</h1>
+  <p style="text-align:center;color:gray;">Automatically updated from Google Sheets</p>
+
+  <div class="filters">
+    <input type="text" id="searchInput" placeholder="Search by model or brand">
+    <select id="brandFilter"></select>
+    <select id="priceSort">
+      <option value="asc">Price: Low → High</option>
+      <option value="desc">Price: High → Low</option>
+    </select>
+  </div>
+
+  <div id="catalog" class="catalog"></div>
+
+  <script>
+    const CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRqmLvcLoBclhwvqcOgxG4ZBDNWRDxbavVaJ4cIkuL8JYG0u-GXm9Csnysc8E6rR1LckcCP0TKppJkx/pub?gid=1098600046&single=true&output=csv";
+
+    async function fetchCSV() {
+      const response = await fetch(CSV_URL);
+      const data = await response.text();
+      return parseCSV(data);
+    }
+
+    function parseCSV(str) {
+      const rows = str.trim().split("\n").map(r => r.split(","));
+      const headers = rows[0].map(h => h.trim());
+      return rows.slice(1).map(row => {
+        let obj = {};
+        headers.forEach((h, i) => obj[h] = row[i] ? row[i].trim() : "");
+        return obj;
+      });
+    }
+
+    function renderProducts(products) {
+      const container = document.getElementById("catalog");
+      container.innerHTML = "";
+
+      products.forEach(p => {
+        // ✅ Only show if publish is blank or TRUE
+        const publish = (p["PUBLISH COLUMN"] || "").toUpperCase();
+        if (publish !== "TRUE" && publish !== "") return;
+
+        const card = document.createElement("div");
+        card.className = "card";
+        card.innerHTML = `
+          <img src="${p.Image_URL || 'https://via.placeholder.com/200'}" alt="${p.Model}">
+          <h3>${p.Brand} ${p.Model}</h3>
+          <p class="price">$${p.Price}</p>
+          <p>${p.Availability}</p>
+          <a href="${p.URL}" target="_blank">View Product</a>
+        `;
+        container.appendChild(card);
+      });
+    }
+
+    function applyFilters(products) {
+      const search = document.getElementById("searchInput").value.toLowerCase();
+      const brand = document.getElementById("brandFilter").value;
+      const sort = document.getElementById("priceSort").value;
+
+      let filtered = products.filter(p =>
+        (p.Brand.toLowerCase().includes(search) || p.Model.toLowerCase().includes(search)) &&
+        (brand === "all" || p.Brand === brand)
+      );
+
+      filtered.sort((a, b) => sort === "asc"
+        ? parseFloat(a.Price) - parseFloat(b.Price)
+        : parseFloat(b.Price) - parseFloat(a.Price)
+      );
+
+      renderProducts(filtered);
+    }
+
+    fetchCSV().then(products => {
+      // Populate brand filter
+      const brands = ["all", ...new Set(products.map(p => p.Brand))];
+      const brandFilter = document.getElementById("brandFilter");
+      brands.forEach(b => {
+        const option = document.createElement("option");
+        option.value = b;
+        option.textContent = b === "all" ? "All Brands" : b;
+        brandFilter.appendChild(option);
+      });
+
+      document.getElementById("searchInput").addEventListener("input", () => applyFilters(products));
+      brandFilter.addEventListener("change", () => applyFilters(products));
+      document.getElementById("priceSort").addEventListener("change", () => applyFilters(products));
+
+      applyFilters(products);
+    });
+  </script>
+</body>
+</html>
